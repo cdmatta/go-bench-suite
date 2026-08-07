@@ -98,13 +98,6 @@ func seedResources() {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 type echoResponse struct {
 	Method     string
 	RequestURI string
@@ -125,8 +118,9 @@ func echoResponseHandler(c *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 		Host:       string(c.Host()),
 		QueryArgs:  c.QueryArgs().String(),
 	}
-	c.Request.Header.VisitAll(func(key, value []byte) {
+	c.Request.Header.All()(func(key, value []byte) bool {
 		res.Headers[string(key)] = append(res.Headers[string(key)], string(value))
+		return true
 	})
 
 	if err := json.NewEncoder(c).Encode(res); err != nil {
@@ -153,8 +147,6 @@ func resourceIndexHandler(c *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 	jsBytes, _ := json.Marshal(subset)
 
 	fmt.Fprint(c, string(jsBytes))
-
-	return
 }
 
 func resourceShowHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
@@ -178,8 +170,6 @@ func resourceShowHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
 	jsBytes, _ := json.Marshal(res)
 
 	fmt.Fprint(c, string(jsBytes))
-
-	return
 }
 
 func applyDelay(c *fasthttp.RequestCtx, _ fasthttprouter.Params) error {
@@ -267,8 +257,6 @@ func fixedDelayResponse(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
 	}
 
 	time.Sleep(duration)
-
-	return
 }
 
 func jsonHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
@@ -287,22 +275,16 @@ func jsonHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
 	default:
 		fmt.Fprintf(c, `{"time": "%s"}`, time.Now().String())
 	}
-
-	return
 }
 
 func xmlHandler(c *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 	c.SetContentType("application/xml")
 
 	fmt.Fprint(c, xml)
-
-	return
 }
 
 func soapHandler(_ *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 	// TODO: SOAP Response
-
-	return
 }
 
 func randStringBytesMaskImpr(n int) string {
