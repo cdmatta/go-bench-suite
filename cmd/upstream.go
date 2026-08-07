@@ -23,7 +23,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var listenAddr, tlsCertFile, tlsKeyFile string
+var listenAddr, tlsCertFile, tlsKeyFile, upstreamName string
+var maxRequestBodySize int
 
 var upstreamCmd = &cobra.Command{
 	Use:   "upstream",
@@ -33,9 +34,9 @@ var upstreamCmd = &cobra.Command{
 		fmt.Println("upstream called")
 
 		if tlsCertFile != "" && tlsKeyFile != "" {
-			log.Fatal(upstream.ServeTLS(listenAddr, tlsCertFile, tlsKeyFile))
+			log.Fatal(upstream.ServeTLS(listenAddr, tlsCertFile, tlsKeyFile, upstreamName, maxRequestBodySize))
 		} else {
-			log.Fatal(upstream.Serve(listenAddr))
+			log.Fatal(upstream.Serve(listenAddr, upstreamName, maxRequestBodySize))
 		}
 	},
 }
@@ -46,4 +47,6 @@ func init() {
 	upstreamCmd.PersistentFlags().StringVar(&listenAddr, "addr", ":8000", "Listen address for the server")
 	upstreamCmd.PersistentFlags().StringVar(&tlsCertFile, "tlsCert", "", "Location of TLS cert file")
 	upstreamCmd.PersistentFlags().StringVar(&tlsKeyFile, "tlsKey", "", "Location of TLS key file")
+	upstreamCmd.PersistentFlags().StringVar(&upstreamName, "upstreamName", "go-bench", "Name to report in 'Server' reponse header")
+	upstreamCmd.PersistentFlags().IntVar(&maxRequestBodySize, "maxRequestBodySize", 10*1024*1024, "Maximum allowed body size in bytes")
 }

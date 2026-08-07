@@ -47,20 +47,31 @@ type resource struct {
 
 var resources map[int]resource
 
-func Serve(addr string) error {
+func Serve(addr, name string, maxRequestBodySize int) error {
 	logrus.Infof("starting server on %s", addr)
 
 	r := registerRoutes()
 
-	return fasthttp.ListenAndServe(addr, r.Handler)
+	s := &fasthttp.Server{
+		Handler:            r.Handler,
+		Name:               name,
+		MaxRequestBodySize: maxRequestBodySize,
+	}
+	return s.ListenAndServe(addr)
 }
 
-func ServeTLS(addr, certFile, keyFile string) error {
+func ServeTLS(addr, certFile, keyFile, name string, maxRequestBodySize int) error {
 	logrus.Infof("starting TLS server on %s", addr)
 
 	r := registerRoutes()
 
-	return fasthttp.ListenAndServeTLS(addr, certFile, keyFile, r.Handler)
+	s := &fasthttp.Server{
+		Handler:            r.Handler,
+		Name:               name,
+		MaxRequestBodySize: maxRequestBodySize,
+	}
+
+	return s.ListenAndServeTLS(addr, certFile, keyFile)
 }
 
 func registerRoutes() *fasthttprouter.Router {
