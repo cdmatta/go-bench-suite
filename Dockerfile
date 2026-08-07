@@ -1,4 +1,4 @@
-FROM golang:1.11-alpine as build
+FROM golang:1.26-alpine as build
 
 ARG VERSION
 
@@ -7,11 +7,11 @@ ENV GOOS=linux
 ENV GOARCH=amd64
 
 RUN apk add --no-cache git && \
-    go get -u github.com/asoorm/go-bench-suite && \
-    cd /go/src/github.com/asoorm/go-bench-suite && git checkout --force $VERSION && \
+    go get -u github.com/cdmatta/go-bench-suite && \
+    cd /go/src/github.com/cdmatta/go-bench-suite && git checkout --force $VERSION && \
     go install -a -ldflags="-s -w" .
 
-FROM alpine:3.8
+FROM alpine:3.24
 
 ENV HOST=0.0.0.0
 ENV PORT=8081

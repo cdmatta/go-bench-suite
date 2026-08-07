@@ -16,10 +16,10 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 
-	"github.com/asoorm/go-bench-suite/upstream"
+	"github.com/cdmatta/go-bench-suite/upstream"
 
-	"github.com/prometheus/common/log"
 	"github.com/spf13/cobra"
 )
 

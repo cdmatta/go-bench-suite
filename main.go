@@ -14,7 +14,7 @@
 
 package main
 
-import "github.com/asoorm/go-bench-suite/cmd"
+import "github.com/cdmatta/go-bench-suite/cmd"
 
 func main() {
 	cmd.Execute()
