@@ -1,15 +1,19 @@
 package upstream
 
 import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/labstack/gommon/bytes"
+	byteSizes "github.com/labstack/gommon/bytes"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttprouter"
@@ -94,10 +98,21 @@ func registerRoutes() *fasthttprouter.Router {
 	r.GET("/xml", xmlHandler)
 	r.POST("/soap", soapHandler)
 	r.GET("/size/:size", sizeHandler)
+	r.POST("/size/:size", sizeHandler)
+	r.PUT("/size/:size", sizeHandler)
+	log.Printf("GET /xml")
+	log.Printf("\t-> returns sample XML response")
+	log.Printf("GET|PUT|POST /size/:size")
+	log.Printf("\tPATH /size/1MB\treturns random payload of requested size")
+	log.Printf("\tQuery chunked=true\tstreams response in chunks")
 
 	seedResources()
 	r.GET("/resource", resourceIndexHandler)
 	r.GET("/resource/:id", resourceShowHandler)
+	log.Printf("Get /resource")
+	log.Printf("\tQuery limit=10\treturns first N resources")
+	log.Printf("Get /resource/:id")
+	log.Printf("\tPATH /resourc/1\treturns a single resource or 404")
 
 	return r
 }
@@ -243,10 +258,10 @@ func applySlowdown(c *fasthttp.RequestCtx, _ fasthttprouter.Params) error {
 	return nil
 }
 
-// Parse parses human readable bytes string to bytes integer.
-// For example, 6GB (6G is also valid) will return 6442450944.
 func sizeHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
-	size, err := bytes.Parse(p.ByName("size"))
+	// Parse parses human readable bytes string to bytes integer.
+	// For example, 6GB (6G is also valid) will return 6442450944.
+	size, err := byteSizes.Parse(p.ByName("size"))
 	if err != nil {
 		return
 	}
@@ -255,9 +270,72 @@ func sizeHandler(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
 		return
 	}
 
-	// not thread safe, so getting new src each time
 	src := rand.NewSource(time.Now().UnixNano())
-	fmt.Fprint(c, randStringBytesMaskImprSrc(int(size), src))
+	q := c.QueryArgs()
+	chunked := !strings.EqualFold(string(q.Peek("chunked")), "false")
+	acceptEncoding := strings.ToLower(string(c.Request.Header.Peek("Accept-Encoding")))
+	useGzip := strings.Contains(acceptEncoding, "gzip") && q.GetBool("gzip")
+
+	if useGzip && !chunked {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		_, _ = gz.Write([]byte(randStringBytesMaskImprSrc(int(size), src)))
+		gz.Close()
+		c.Response.Header.Set("Content-Encoding", "gzip")
+		c.Response.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
+		c.SetBody(buf.Bytes())
+		return
+	}
+
+	writeBody := func(w *bufio.Writer) {
+		var writer *gzip.Writer
+		if useGzip {
+			writer = gzip.NewWriter(w)
+			defer writer.Close()
+		}
+
+		out := w
+		if writer != nil {
+			out = bufio.NewWriter(writer)
+			defer out.Flush()
+		}
+
+		if chunked {
+			var chunk int64 = 10 * 1024 * 1024
+			mod := size / chunk
+			remainder := size % chunk
+			for i := 0; i < int(mod); i++ {
+				fmt.Fprint(out, randStringBytesMaskImprSrc(int(chunk), src))
+				if err := out.Flush(); err != nil {
+					return
+				}
+			}
+
+			if remainder > 0 {
+				fmt.Fprint(out, randStringBytesMaskImprSrc(int(remainder), src))
+			}
+		} else {
+			fmt.Fprint(out, randStringBytesMaskImprSrc(int(size), src))
+		}
+	}
+
+	if useGzip {
+		c.Response.Header.Set("Content-Encoding", "gzip")
+	}
+
+	status := string(c.Request.Header.Peek("X-Status"))
+	if status != "" {
+		code, err := strconv.Atoi(status)
+		if err == nil {
+			c.SetStatusCode(code)
+		}
+	}
+
+	if chunked || useGzip {
+		c.SetBodyStreamWriter(writeBody)
+	} else {
+		fmt.Fprint(c, randStringBytesMaskImprSrc(int(size), src))
+	}
 }
 
 func fixedDelayResponse(c *fasthttp.RequestCtx, p fasthttprouter.Params) {
@@ -296,24 +374,6 @@ func xmlHandler(c *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 
 func soapHandler(_ *fasthttp.RequestCtx, _ fasthttprouter.Params) {
 	// TODO: SOAP Response
-}
-
-func randStringBytesMaskImpr(n int) string {
-	b := make([]byte, n)
-	// A rand.Int63() generates 63 random bits, enough for letterIdxMax letters!
-	for i, cache, remain := n-1, rand.Int63(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			cache, remain = rand.Int63(), letterIdxMax
-		}
-		if idx := int(cache & letterIdxMask); idx < len(letterBytes) {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
-	}
-
-	return string(b)
 }
 
 // https://stackoverflow.com/questions/22892120/how-to-generate-a-random-string-of-a-fixed-length-in-go
