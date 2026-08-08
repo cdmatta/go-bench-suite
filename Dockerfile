@@ -1,29 +1,31 @@
-FROM golang:1.26-alpine as build
+# Stage 1: Build stage
+FROM golang:1.26-alpine AS builder
 
-ARG VERSION
+# Install build dependencies (needed if CGO or native extensions are used)
+RUN apk add --no-cache git gcc musl-dev libc-dev
 
-ENV CGO_ENABLED=0
-ENV GOOS=linux
-ENV GOARCH=amd64
+WORKDIR /app
 
-RUN apk add --no-cache git && \
-    go get -u github.com/cdmatta/go-bench-suite && \
-    cd /go/src/github.com/cdmatta/go-bench-suite && git checkout --force $VERSION && \
-    go install -a -ldflags="-s -w" .
+# Copy dependency definitions first to leverage Docker layer caching
+COPY go.mod go.sum* ./
+RUN go mod download || true
 
+# Copy source code
+COPY . .
+
+# Build the binary
+# Disable CGO for a pure static binary, or set CGO_ENABLED=1 if C libraries are required
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o go-bench-suite
+
+# Stage 2: Runtime stage
 FROM alpine:3.24
 
-ENV HOST=0.0.0.0
-ENV PORT=8081
-
-RUN apk --no-cache add ca-certificates
+RUN apk add --no-cache ca-certificates tzdata
 RUN adduser -D -g bench bench
 USER bench
 
 WORKDIR /opt/bench
-COPY --from=build /go/bin/go-bench-suite /opt/bench/go-bench-suite
+COPY --from=builder /app/go-bench-suite /opt/bench/go-bench-suite
 USER bench
 
-#EXPOSE $PORT
-
-CMD ["./go-bench-suite"]
+ENTRYPOINT ["./go-bench-suite"]
